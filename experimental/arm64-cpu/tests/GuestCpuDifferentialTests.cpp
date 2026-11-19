@@ -181,6 +181,19 @@ int main() {
                 return EXIT_FAILURE;
             }
         }
+        const auto divisor = static_cast<std::int16_t>(value | 1u);
+        const auto dividend = static_cast<std::int16_t>(value >> 16) * divisor + divisor / 2;
+        auto ax = static_cast<std::uint16_t>(dividend);
+        auto dx = static_cast<std::uint16_t>(static_cast<std::uint32_t>(dividend) >> 16);
+        GuestCpu division(std::array<std::uint8_t, 4>{0x66, 0xF7, 0xF9, 0xC3});
+        division.setRegister(0, ax);
+        division.setRegister(2, dx);
+        division.setRegister(1, static_cast<std::uint16_t>(divisor));
+        asm volatile("idivw %2" : "+a"(ax), "+d"(dx) : "c"(divisor) : "cc");
+        if (division.run() != ax || division.registerValue(2) != dx) {
+            std::fprintf(stderr, "IDIV word mismatch for %d / %d\n", dividend, divisor);
+            return EXIT_FAILURE;
+        }
         if (nativeParity(value) != guestParity(value)) {
             std::fprintf(stderr, "Parity mismatch sample=%u value=%08x\\n", sample, value);
             return EXIT_FAILURE;

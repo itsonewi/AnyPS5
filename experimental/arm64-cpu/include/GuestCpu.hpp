@@ -44,6 +44,7 @@ private:
     std::size_t callDepth_ = 0;
     struct Operand { bool isRegister; std::size_t index; std::uint64_t address; };
     Operand decodeOperand(std::uint8_t modrm, bool rexB, bool rexX, std::size_t trailingImmediateBytes = 0);
+    std::uint16_t readWord(const Operand& operand) const;
     std::uint64_t readOperand(const Operand& operand, bool wide) const;
     void writeOperand(const Operand& operand, std::uint64_t value, bool wide);
     std::uint8_t read8();

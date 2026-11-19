@@ -10,8 +10,8 @@ Status: **in progress**. This is a source-level inventory, **not** a measured pe
 | Data movement | 88/8A byte MOV; 89/8B MOV; 66 89/8B word MOV; C6 /0 byte immediate; C7 /0 word/dword/qword immediate | ModR/M register and bounded memory; REX high-byte semantics |
 | Addressing | 8D LEA; ModR/M with SIB, displacement, RIP-relative | 64-bit addressing subset; no segment or address-size overrides |
 | Extensions | 63 MOVSXD; 0F B6/B7 MOVZX; 0F BE/BF MOVSX; 98 CBW/CWDE/CDQE; 99 CWD/CDQ/CQO | Operand-size support varies by form |
-| Integer ALU | ADD, SUB, ADC, SBB, CMP, TEST, AND, OR, XOR register and selected immediate forms; F7 NOT/NEG/TEST; FF INC/DEC | No 16-bit ALU beyond MOV; byte group F6 not implemented |
-| Multiplication | 0F AF two-operand IMUL; 69/6B three-operand IMUL; F7 /4 MUL, /5 IMUL, /6 DIV, /7 IDIV | 32/64-bit forms; no byte F6 multiply or divide |
+| Integer ALU | ADD, SUB, ADC, SBB, CMP, TEST, AND, OR, XOR register and selected immediate forms; F7 NOT/NEG/TEST; FF INC/DEC | 32/64-bit forms |
+| Multiplication and division | 0F AF two-operand IMUL; 69/6B three-operand IMUL; F7 /4 MUL, /5 IMUL, /6 DIV, /7 IDIV | 32/64-bit forms for all four operations, plus 16-bit IDIV on register and memory operands |
 | Shifts | C1/D1/D3 ROL/ROR/SHL/SHR/SAR | No SHLD/SHRD, D0/D2 byte counts, or 16-bit forms |
 | Conditions | short and near Jcc, 0F 90..9F SETcc, 0F 40..4F CMOVcc | ZF/CF/SF/OF/PF tracked; AF not tracked |
 | Control flow | E8 CALL, C3 RET, E9/EB JMP, FF /2 CALL and /4 JMP, PUSH/POP, C9 LEAVE | No syscalls, exceptions or far branches |
