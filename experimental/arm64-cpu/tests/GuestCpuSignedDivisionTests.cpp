@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <exception>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 using anyps5::experimental::GuestCpu;
@@ -241,6 +242,47 @@ int main() {
             0x8000000000000000ULL, UINT64_MAX);
     }
 
+    constexpr std::uint64_t raxUpper = 0x1122334455660000ULL;
+    constexpr std::uint64_t rdxUpper = 0xAABBCCDDEEFF0000ULL;
+    struct WordCase {
+        std::int32_t dividend;
+        std::int16_t divisor, quotient, remainder;
+        const char* fault;
+    };
+    for (const WordCase item : {
+        WordCase{-100, 7, -14, -2, nullptr}, {100, -7, -14, 2, nullptr},
+        {-100, -7, 14, -2, nullptr}, {65535, 2, INT16_MAX, 1, nullptr},
+        {-65537, 2, INT16_MIN, -1, nullptr}, {INT16_MIN, INT16_MIN, 1, 0, nullptr},
+        {1, 0, 0, 0, "Guest division by zero"},
+        {65536, 2, 0, 0, "Guest division quotient overflow"},
+        {-65538, 2, 0, 0, "Guest division quotient overflow"},
+        {INT32_MIN, -1, 0, 0, "Guest division quotient overflow"}}) {
+        const auto ax = raxUpper | static_cast<std::uint16_t>(item.dividend);
+        const auto dx = rdxUpper | (static_cast<std::uint32_t>(item.dividend) >> 16);
+        GuestCpu cpu(std::array<std::uint8_t, 4>{0x66, 0xF7, 0xF9, 0xC3});
+        cpu.setRegister(0, ax);
+        cpu.setRegister(2, dx);
+        cpu.setRegister(1, UINT64_C(0xFFFF0000) | static_cast<std::uint16_t>(item.divisor));
+        const std::string_view expectedFault = item.fault ? item.fault : "";
+        bool matched = expectedFault.empty();
+        try {
+            cpu.run();
+        } catch (const std::runtime_error& error) {
+            matched = expectedFault == error.what();
+        }
+        const auto expectedAx = item.fault ? ax : (raxUpper | static_cast<std::uint16_t>(item.quotient));
+        const auto expectedDx = item.fault ? dx : (rdxUpper | static_cast<std::uint16_t>(item.remainder));
+        if (!matched || cpu.rax() != expectedAx || cpu.registerValue(2) != expectedDx) {
+            std::fprintf(stderr, "idiv16 failed for %d / %d\n", item.dividend, item.divisor);
+            ok = false;
+        }
+    }
+    {
+        auto code = withRax(42);
+        code.insert(code.end(), {0x66, 0xC7, 0x44, 0x24, 0xFE, 0xFC, 0xFF,
+                                 0x66, 0xF7, 0x7C, 0x24, 0xFE, 0xC3});
+        ok &= check("idiv16 memory operand at end of stack", code, 0xFFF6, 2);
+    }
     ok &= check("idiv32 positive", idiv32(100, 0, 7), 14, 2);
     ok &= check("idiv32 negative dividend", idiv32(0xFFFFFF9Cu, 0xFFFFFFFFu, 7),
         0xFFFFFFF2ULL, 0xFFFFFFFEULL);

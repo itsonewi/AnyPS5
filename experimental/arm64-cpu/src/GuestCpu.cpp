@@ -185,6 +185,13 @@ GuestCpu::Operand GuestCpu::decodeOperand(std::uint8_t modrm, bool rexB, bool re
     return {false, 0, base + index * scale + static_cast<std::uint64_t>(displacement)};
 }
 
+std::uint16_t GuestCpu::readWord(const Operand& operand) const {
+    if (operand.isRegister) return static_cast<std::uint16_t>(registers_[operand.index]);
+    checkMemory(operand.address, 2, false);
+    const auto address = static_cast<std::size_t>(operand.address);
+    return static_cast<std::uint16_t>(memory_[address] | (memory_[address + 1] << 8));
+}
+
 std::uint64_t GuestCpu::readOperand(const Operand& operand, bool wide) const {
     if (operand.isRegister) {
         const auto value = registers_[operand.index];
@@ -542,14 +549,6 @@ std::uint64_t GuestCpu::run(std::size_t maxInstructions) {
             const auto modrm = read8();
             const auto reg = static_cast<std::size_t>(((modrm >> 3) & 7) + (rexR ? 8 : 0));
             const auto operand = decodeOperand(modrm, extended, rexX);
-            const auto readWord = [&]() -> std::uint16_t {
-                if (operand.isRegister)
-                    return static_cast<std::uint16_t>(registers_[operand.index]);
-                checkMemory(operand.address, 2, false);
-                const auto address = static_cast<std::size_t>(operand.address);
-                return static_cast<std::uint16_t>(
-                    memory_[address] | (static_cast<unsigned>(memory_[address + 1]) << 8));
-            };
             const auto writeWord = [&](std::uint16_t value) {
                 if (operand.isRegister) {
                     registers_[operand.index] =
@@ -562,7 +561,7 @@ std::uint64_t GuestCpu::run(std::size_t maxInstructions) {
                 }
             };
             if (opcode == 0x89) writeWord(static_cast<std::uint16_t>(registers_[reg]));
-            else registers_[reg] = (registers_[reg] & ~UINT64_C(0xFFFF)) | readWord();
+            else registers_[reg] = (registers_[reg] & ~UINT64_C(0xFFFF)) | readWord(operand);
             continue;
         }
         // 66 C7 /0: MOV r/m16,imm16. The immediate is two bytes,
@@ -584,6 +583,22 @@ std::uint64_t GuestCpu::run(std::size_t maxInstructions) {
                 memory_[address] = static_cast<std::uint8_t>(value);
                 memory_[address + 1] = static_cast<std::uint8_t>(value >> 8);
             }
+            continue;
+        }
+        if (operand16 && opcode == 0xF7) {
+            const auto modrm = read8();
+            if (((modrm >> 3) & 7) != 7)
+                throw std::runtime_error("Unsupported 16-bit F7 group operation");
+            const auto divisor = static_cast<std::int16_t>(readWord(decodeOperand(modrm, extended, rexX)));
+            if (divisor == 0) throw std::runtime_error("Guest division by zero");
+            const auto bits = (static_cast<std::uint32_t>(registers_[2]) << 16)
+                            | static_cast<std::uint16_t>(registers_[0]);
+            const std::int64_t dividend = static_cast<std::int32_t>(bits);
+            const auto quotient = dividend / divisor;
+            if (quotient < INT16_MIN || quotient > INT16_MAX)
+                throw std::runtime_error("Guest division quotient overflow");
+            registers_[0] = (registers_[0] & ~UINT64_C(0xFFFF)) | static_cast<std::uint16_t>(quotient);
+            registers_[2] = (registers_[2] & ~UINT64_C(0xFFFF)) | static_cast<std::uint16_t>(dividend % divisor);
             continue;
         }
         if (operand16 && !(opcode >= 0xB8 && opcode <= 0xBF))
@@ -1150,16 +1165,7 @@ std::uint64_t GuestCpu::run(std::size_t maxInstructions) {
                 const auto destination = static_cast<std::size_t>(
                     ((modrm >> 3) & 7) + (rexR ? 8 : 0));
                 const auto operand = decodeOperand(modrm, extended, rexX);
-                std::uint16_t wordValue = 0;
-                if (operand.isRegister) {
-                    wordValue = static_cast<std::uint16_t>(registers_[operand.index]);
-                } else {
-                    checkMemory(operand.address, 2, false);
-                    const auto offset = static_cast<std::size_t>(operand.address);
-                    wordValue = static_cast<std::uint16_t>(
-                        static_cast<std::uint16_t>(memory_[offset]) |
-                        (static_cast<std::uint16_t>(memory_[offset + 1]) << 8));
-                }
+                const auto wordValue = readWord(operand);
                 if (second == 0xB7) {
                     registers_[destination] = wordValue;
                 } else {
